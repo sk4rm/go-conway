@@ -4,7 +4,10 @@ import (
 	"log"
 	"math/rand"
 
+	"github.com/hajimehoshi/bitmapfont/v3"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 const (
@@ -12,10 +15,17 @@ const (
 	screenHeight int = 240
 )
 
+var fontFace text.Face = text.NewGoXFace(bitmapfont.Face)
+
 type World struct {
 	grid   []bool
 	width  int
 	height int
+}
+
+type Game struct {
+	world *World
+	keys  []ebiten.Key
 }
 
 func NewWorld(width, height int) *World {
@@ -26,7 +36,7 @@ func NewWorld(width, height int) *World {
 	}
 
 	for i := range w.grid {
-		w.grid[i] = rand.Intn(100) <= 80
+		w.grid[i] = rand.Intn(100) < 40
 	}
 
 	return w
@@ -38,6 +48,7 @@ func (w *World) countNeighbors(i int) int {
 	x := i % w.width
 	bounds := w.width * w.height
 
+	// (x0, y0) = (-1, -1), (0, -1), (1, -1), ..., (1, 1)
 	for y0 := -1; y0 <= 1; y0++ {
 		for x0 := -1; x0 <= 1; x0++ {
 			if x0 == 0 && y0 == 0 {
@@ -57,33 +68,33 @@ func (w *World) countNeighbors(i int) int {
 	return count
 }
 
-type Game struct {
-	world *World
-}
-
 func (g *Game) Update() error {
+	// update board based on game of life laws
 	next := make([]bool, g.world.width*g.world.height)
 	for i := range g.world.grid {
 		c := g.world.countNeighbors(i)
 
 		switch {
-		case c < 2:
+		case c < 2 || c > 3:
 			next[i] = false
-		case (c == 2 || c == 3) && g.world.grid[i]:
-			next[i] = true
-		case c > 3:
-			next[i] = false
+		case c == 2:
+			next[i] = g.world.grid[i]
 		case c == 3:
 			next[i] = true
 		}
 	}
-
 	g.world.grid = next
+
+	// reset on 'R' keypress
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		g.world = NewWorld(screenWidth, screenHeight)
+	}
 
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
+	// draw white pixels
 	pixels := make([]byte, 4*g.world.width*g.world.height)
 	for i, v := range g.world.grid {
 		if v {
@@ -99,6 +110,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 	screen.WritePixels(pixels)
+
+	// text
+	text.Draw(screen, "press R to reset world", fontFace, &text.DrawOptions{})
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -108,6 +122,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 func main() {
 	g := &Game{
 		NewWorld(screenWidth, screenHeight),
+		[]ebiten.Key{},
 	}
 
 	ebiten.SetWindowSize(640, 480)
